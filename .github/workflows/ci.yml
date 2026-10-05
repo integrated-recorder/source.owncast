@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify module files
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+      - name: Test
+        run: go test ./...
+      - name: Race test
+        run: go test -race -count=1 ./...
+      - name: Vet and build
+        run: |
+          go vet ./...
+          go build ./...
+      - name: Check SDK-only dependency graph
+        run: |
+          ! go list -m all | grep -F 'github.com/integrated-recorder/core'
+          ! go list -deps ./... | grep -F 'github.com/integrated-recorder/core/'
+      - name: Build release descriptor identity
+        run: |
+          go build -trimpath -ldflags='-X github.com/integrated-recorder/source.owncast/internal/owncast.version=0.2.0' \
+            -o /tmp/integrated-recorder-adapter-owncast ./cmd/integrated-recorder-adapter-owncast
+      - name: Core-owned conformance
+        run: |
+          git clone --filter=blob:none https://github.com/integrated-recorder/core.git /tmp/integrated-recorder-core
+          git -C /tmp/integrated-recorder-core checkout 3cf2c90280873f98f5120f67e39516c5af8abc04
+          cd /tmp/integrated-recorder-core
+          go build -o /tmp/adapter-conformance ./cmd/adapter-conformance
+          /tmp/adapter-conformance --binary /tmp/integrated-recorder-adapter-owncast --json
+      - name: Diff check
+        run: git diff --check
