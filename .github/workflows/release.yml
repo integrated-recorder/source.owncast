@@ -20,6 +20,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Test exact release commit
+        run: |
+          go mod download
+          go test ./...
       - name: Verify release tag and version
         id: release
         shell: bash
